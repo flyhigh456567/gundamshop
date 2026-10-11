@@ -24,7 +24,10 @@ service cloud.firestore {
           'displayName', 'email', 'phone', 'address', 'role', 'createdAt', 'updatedAt'
         ])
         && request.resource.data.email == request.auth.token.email
-        && request.resource.data.role == 'user';
+        && request.resource.data.role == 'user'
+        && request.resource.data.displayName == request.resource.data.displayName.lower()
+        && request.resource.data.displayName.matches('^[^/]{1,60}$')
+        && getAfter(/databases/$(database)/documents/memberNames/$(request.resource.data.displayName)).data.uid == userId;
 
       allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
 
@@ -36,10 +39,28 @@ service cloud.firestore {
         && request.resource.data.email == resource.data.email
         && request.resource.data.get('role', 'user') == resource.data.get('role', 'user')
         && request.resource.data.get('createdAt', resource.data.get('createdAt', null))
-          == resource.data.get('createdAt', null);
+          == resource.data.get('createdAt', null)
+        && request.resource.data.displayName == request.resource.data.displayName.lower()
+        && request.resource.data.displayName.matches('^[^/]{1,60}$')
+        && getAfter(/databases/$(database)/documents/memberNames/$(request.resource.data.displayName)).data.uid == userId;
 
       // Role changes are deliberately limited to trusted Firebase Console/Admin SDK operations.
       allow delete: if isAdmin();
+    }
+
+    match /memberNames/{nameKey} {
+      // Names are case-normalized by the client and stored lowercase. A signed-in user
+      // can check one name but cannot list the registry.
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['uid'])
+        && request.resource.data.uid == request.auth.uid
+        && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.displayName == nameKey;
+      allow update: if false;
+      allow delete: if signedIn()
+        && resource.data.uid == request.auth.uid
+        && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.displayName != nameKey;
     }
 
     match /products/{productId} {

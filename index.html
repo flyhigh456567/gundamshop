@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- saved from url=(0034)http://127.0.0.1:5500/index02.html -->
+<!-- Published site: https://flyhigh456567.github.io/gundamshop/ -->
 <html lang="zh-Hant"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
   
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -221,12 +221,12 @@
   <div class="topline"></div>
   <header>
     <div class="container nav">
-      <a class="brand" href="http://127.0.0.1:5500/index02.html#home" aria-label="ARMATURE 首頁">
+      <a class="brand" href="https://flyhigh456567.github.io/gundamshop/#home" aria-label="ARMATURE 首頁">
         <span class="brand-mark">A/</span>
         <span><span class="brand-title">ARMATURE</span><span class="brand-sub">MECHA SUPPLY DIVISION</span></span>
       </a>
       <nav class="nav-links" aria-label="主要導覽">
-        <a href="http://127.0.0.1:5500/index02.html#products">裝備目錄</a><a href="http://127.0.0.1:5500/index02.html#about">作戰規格</a><a href="http://127.0.0.1:5500/index02.html#adminPanel" id="adminNav" class="hidden">管理控制台</a>
+        <a href="https://flyhigh456567.github.io/gundamshop/#products">裝備目錄</a><a href="https://flyhigh456567.github.io/gundamshop/#about">作戰規格</a><a href="https://flyhigh456567.github.io/gundamshop/#adminPanel" id="adminNav" class="hidden">管理控制台</a>
       </nav>
       <div class="nav-actions">
         <button class="btn btn-quiet" id="accountButton">登入 / 註冊</button>
@@ -242,7 +242,7 @@
           <div class="hero-kicker"><span class="pulse"></span> ARMATURE / SUPPLY ONLINE</div>
           <h1>GEAR UP.<span class="line-red">STAND OUT.</span></h1>
           <p>為熱愛機甲設計與模型文化的人，蒐集具有鮮明線條、戰術配色與機械美學的裝備。從桌面收藏到模型工具，打造你的專屬整備基地。</p>
-          <div class="hero-actions"><a class="btn btn-primary" href="http://127.0.0.1:5500/index02.html#products">探索裝備目錄 ↗</a><button class="btn" id="heroAccountButton">啟動會員識別</button></div>
+          <div class="hero-actions"><a class="btn btn-primary" href="https://flyhigh456567.github.io/gundamshop/#products">探索裝備目錄 ↗</a><button class="btn" id="heroAccountButton">啟動會員識別</button></div>
           <div class="hero-meta">
             <div class="hero-stat"><strong>01 / 04</strong><span>配色靈感｜白・藍・紅・金</span></div>
             <div class="hero-stat"><strong>MODULAR</strong><span>收藏、展示、整備</span></div>
@@ -327,7 +327,7 @@
 
   <!-- Authentication -->
   <dialog id="authDialog">
-    <div class="dialog-head"><h2>會員識別 / PILOT ACCESS</h2><button class="icon-btn" data-close="authDialog" aria-label="關閉">×</button></div>
+    <div class="dialog-head"><h2>會員識別 / PILOT ACCESS</h2><button type="button" class="icon-btn" data-close="authDialog" aria-label="關閉">×</button></div>
     <div class="tabs"><button type="button" class="tab-btn active" data-auth-mode="login">會員登入</button><button type="button" class="tab-btn" data-auth-mode="signup">建立帳號</button></div>
     <div class="dialog-body">
       <form id="authForm">
@@ -393,11 +393,11 @@
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js';
     import {
       getAuth, onAuthStateChanged, createUserWithEmailAndPassword,
-      signInWithEmailAndPassword, signOut, sendPasswordResetEmail, updateProfile
+      signInWithEmailAndPassword, signOut, sendPasswordResetEmail, updateProfile, deleteUser
     } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js';
     import {
       getFirestore, collection, doc, getDoc, getDocs, query, where,
-      addDoc, setDoc, updateDoc, deleteDoc, serverTimestamp
+      addDoc, setDoc, updateDoc, deleteDoc, serverTimestamp, runTransaction
     } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js';
     import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-storage.js';
 
@@ -451,6 +451,7 @@
         'auth/user-not-found': '找不到此會員，請確認電子郵件。',
         'auth/wrong-password': '密碼不正確。',
         'auth/too-many-requests': '嘗試次數過多，請稍後再試。',
+        'member/name-taken': '此會員名稱已有人使用，請換一個名稱。',
         'permission-denied': '資料庫拒絕此操作，請確認 Firebase Rules 與管理員 UID 設定。',
         'storage/unauthorized': '圖片上傳遭拒，請確認 Storage Rules 與管理員 UID 設定。',
         'storage/canceled': '圖片上傳已取消。'
@@ -667,14 +668,29 @@
       const password = $('#authPassword').value;
       const button = $('#authSubmit');
       button.disabled = true; button.textContent = authMode === 'signup' ? '建立中…' : '登入中…';
+      let newlyCreatedUser = null;
       try {
         if (authMode === 'signup') {
-          const displayName = $('#signupName').value.trim();
+          const displayName = $('#signupName').value.trim().toLowerCase();
+          if (!displayName || displayName.includes('/')) throw new Error('會員名稱不可空白或包含斜線。');
           const credential = await createUserWithEmailAndPassword(auth, email, password);
+          newlyCreatedUser = credential.user;
           if (displayName) await updateProfile(credential.user, { displayName });
-          await setDoc(doc(db, 'users', credential.user.uid), {
-            displayName, email, phone: '', address: '', role: 'user', createdAt: serverTimestamp(), updatedAt: serverTimestamp()
+          const userRef = doc(db, 'users', credential.user.uid);
+          const nameRef = doc(db, 'memberNames', displayName);
+          await runTransaction(db, async transaction => {
+            const nameSnapshot = await transaction.get(nameRef);
+            if (nameSnapshot.exists()) {
+              const error = new Error('此會員名稱已有人使用。');
+              error.code = 'member/name-taken';
+              throw error;
+            }
+            transaction.set(nameRef, { uid: credential.user.uid });
+            transaction.set(userRef, {
+              displayName, email, phone: '', address: '', role: 'user', createdAt: serverTimestamp(), updatedAt: serverTimestamp()
+            });
           });
+          newlyCreatedUser = null;
           notify('會員帳號建立成功。');
         } else {
           await signInWithEmailAndPassword(auth, email, password);
@@ -682,6 +698,10 @@
         }
         closeDialog('authDialog'); $('#authForm').reset();
       } catch (error) {
+        if (newlyCreatedUser) {
+          try { await deleteUser(newlyCreatedUser); }
+          catch (cleanupError) { console.error('清理未完成的重複名稱註冊帳號失敗', cleanupError); }
+        }
         console.error(error); notify(explainError(error), 'error');
       } finally {
         button.disabled = false; button.textContent = authMode === 'signup' ? '建立帳號' : '登入';
@@ -701,8 +721,16 @@
       const snap = await getDoc(userRef);
       if (snap.exists()) currentProfile = snap.data();
       else {
-        currentProfile = { displayName: currentUser.displayName || '', email: currentUser.email || '', phone: '', address: '', role: 'user' };
-        await setDoc(userRef, { ...currentProfile, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+        const baseName = (currentUser.displayName || currentUser.email?.split('@')[0] || 'member').trim().toLowerCase().replace(/\//g, '-');
+        const displayName = `${baseName}-${currentUser.uid.slice(0, 6)}`;
+        const nameRef = doc(db, 'memberNames', displayName);
+        currentProfile = { displayName, email: currentUser.email || '', phone: '', address: '', role: 'user' };
+        await runTransaction(db, async transaction => {
+          const nameSnapshot = await transaction.get(nameRef);
+          if (nameSnapshot.exists()) throw new Error('無法為此會員建立唯一名稱索引，請聯絡管理員。');
+          transaction.set(nameRef, { uid: currentUser.uid });
+          transaction.set(userRef, { ...currentProfile, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+        });
       }
       if (!currentProfile.role) currentProfile.role = 'user';
       fillProfileForm();
@@ -716,11 +744,29 @@
     async function saveProfile(event) {
       event.preventDefault();
       if (!currentUser) return;
-      const displayName = $('#profileName').value.trim();
+      const displayName = $('#profileName').value.trim().toLowerCase();
       const phone = $('#profilePhone').value.trim();
       const address = $('#profileAddress').value.trim();
+      if (!displayName || displayName.includes('/')) return notify('會員名稱不可空白或包含斜線。', 'error');
       try {
-        await setDoc(doc(db, 'users', currentUser.uid), { displayName, phone, address, updatedAt: serverTimestamp() }, { merge: true });
+        const userRef = doc(db, 'users', currentUser.uid);
+        const oldName = currentProfile.displayName || currentUser.displayName || '';
+        const oldNameRef = oldName ? doc(db, 'memberNames', oldName) : null;
+        const newNameRef = doc(db, 'memberNames', displayName);
+        await runTransaction(db, async transaction => {
+          const newNameSnapshot = await transaction.get(newNameRef);
+          if (newNameSnapshot.exists() && newNameSnapshot.data().uid !== currentUser.uid) {
+            const error = new Error('此會員名稱已有人使用。');
+            error.code = 'member/name-taken';
+            throw error;
+          }
+          if (!newNameSnapshot.exists()) transaction.set(newNameRef, { uid: currentUser.uid });
+          if (oldNameRef && oldName !== displayName) {
+            const oldNameSnapshot = await transaction.get(oldNameRef);
+            if (oldNameSnapshot.exists() && oldNameSnapshot.data().uid === currentUser.uid) transaction.delete(oldNameRef);
+          }
+          transaction.set(userRef, { displayName, phone, address, updatedAt: serverTimestamp() }, { merge: true });
+        });
         await updateProfile(currentUser, { displayName });
         currentProfile = { ...currentProfile, displayName, phone, address };
         renderAccountButton(); renderCart(); notify('會員資料已儲存。');
@@ -863,7 +909,9 @@
     });
     $$('.tab-btn').forEach(button => button.addEventListener('click', () => setAuthMode(button.dataset.authMode)));
     $$('[data-close]').forEach(button => button.addEventListener('click', () => closeDialog(button.dataset.close)));
-    $$('dialog').forEach(dialog => dialog.addEventListener('click', event => { if (event.target === dialog) dialog.close(); }));
+    $$('dialog').forEach(dialog => dialog.addEventListener('click', event => {
+      if (dialog.id !== 'authDialog' && event.target === dialog) dialog.close();
+    }));
     $('#productGrid').addEventListener('click', event => {
       const addButton = event.target.closest('[data-add-cart]');
       if (addButton) return addToCart(addButton.dataset.addCart);
