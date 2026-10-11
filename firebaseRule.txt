@@ -3,6 +3,7 @@ Firebase Firestore Rules
 
 貼到 Firebase Console > Firestore Database > Rules，然後發布。
 管理員角色存在 users/{UID}.role。只有你在 Firebase Console 手動改成 admin 的會員才可管理商品；前端不能自行升級角色。
+商品資料儲存在 Firestore 的 products 集合。商品圖片改由 GitHub Pages 提供，不使用 Firebase Storage；因此不需要另外設定或發布 Firebase Storage Rules。
 
 rules_version = '2';
 service cloud.firestore {
@@ -65,7 +66,12 @@ service cloud.firestore {
 
     match /products/{productId} {
       allow read: if isAdmin() || resource.data.isPublished == true;
-      allow create, update, delete: if isAdmin();
+      allow create, update: if isAdmin()
+        && request.resource.data.keys().hasAll(['image_url'])
+        && (request.resource.data.image_url == null
+          || (request.resource.data.image_url is string
+            && request.resource.data.image_url.matches('^[^/]{1,200}$')));
+      allow delete: if isAdmin();
     }
 
     match /orders/{orderId} {
@@ -85,36 +91,12 @@ service cloud.firestore {
   }
 }
 
-Firebase Storage Rules (商品圖片上傳功能需要)
-============================================
-
-請另外貼到 Firebase Console > Storage > Rules，然後發布。
-Storage 會讀取已登入會員的 Firestore users/{UID}.role 判斷 admin；若 Firebase 要求，請在 Firebase Console 啟用 Storage Rules 存取 Firestore。
-
-rules_version = '2';
-service firebase.storage {
-  match /b/{bucket}/o {
-    function isAdmin() {
-      return request.auth != null
-        && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin';
-    }
-
-    match /products/{userId}/{fileName} {
-      allow read: if true;
-      allow write: if isAdmin()
-        && request.auth.uid == userId
-        && request.resource.size < 8 * 1024 * 1024
-        && request.resource.contentType.matches('image/.*');
-    }
-  }
-}
-
 如何設定管理員
 ==============
 
 1. 先在網站註冊並登入該會員一次。註冊會建立 Authentication 帳號及 Firestore users/{UID} 文件，欄位 role 初始值為 user。
 2. Firebase Console > Firestore Database > users > 該會員 UID 文件，將 role 字串從 user 改成 admin。
-3. 重新整理網站或重新登入，管理控制台就會顯示。商品新增、編輯、刪除及圖片上傳都會檢查 admin 權限。
+3. 重新整理網站或重新登入，管理控制台就會顯示。商品新增、編輯及刪除都由 Firestore Rules 檢查 admin 權限。
 4. 不要讓一般會員具備 Firebase Console 權限；會員只能讀取自己的角色，Rules 會拒絕自行修改 role。
 
 注意：訂單金額目前由前端計算，僅適合測試流程；正式收款前應移至可信任的後端重新計價。

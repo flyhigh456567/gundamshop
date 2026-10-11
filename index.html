@@ -146,8 +146,10 @@
     textarea.field { resize: vertical; min-height: 90px; }
     .check-line { display: flex; align-items: center; gap: 9px; font-size: .82rem; color: #cbd7e9; }
     .check-line input { accent-color: var(--red); width: 17px; height: 17px; }
-    .image-preview { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 9px; }
-    .image-preview img { width: 65px; height: 65px; border-radius: 6px; border: 1px solid #415875; object-fit: cover; }
+    .product-placeholder { width: 100%; height: 100%; min-height: 90px; display: grid; place-items: center; padding: 16px; color: var(--yellow); background: radial-gradient(circle at 50% 35%, #27466b, #111b2d 68%); font: 700 .86rem "Orbitron", sans-serif; letter-spacing: .08em; text-align: center; }
+    .product-placeholder.detail-placeholder { min-height: 280px; }
+    .admin-row .product-placeholder { width: 54px; min-width: 54px; height: 54px; min-height: 54px; padding: 3px; font: 700 .42rem "Orbitron", sans-serif; }
+    .cart-row .product-placeholder { width: 55px; height: 55px; min-height: 55px; padding: 3px; font: 700 .4rem "Orbitron", sans-serif; }
     .admin-list { display: flex; flex-direction: column; gap: 10px; max-height: 580px; overflow: auto; }
     .admin-row { display: flex; align-items: center; gap: 11px; padding: 10px; background: #0b1423; border: 1px solid #263852; border-radius: 8px; }
     .admin-row img { width: 54px; height: 54px; object-fit: cover; border-radius: 5px; }
@@ -264,7 +266,7 @@
         <div class="spec-item"><span class="spec-icon">01</span><div><strong>機甲配色系統</strong><span>深藍・警示紅・識別金</span></div></div>
         <div class="spec-item"><span class="spec-icon">02</span><div><strong>多角度商品展示</strong><span>主圖＋細節圖集</span></div></div>
         <div class="spec-item"><span class="spec-icon">03</span><div><strong>會員與訂單管理</strong><span>登入後保存會員資料</span></div></div>
-        <div class="spec-item"><span class="spec-icon">04</span><div><strong>Firebase 雲端資料</strong><span>Firestore＋Storage</span></div></div>
+        <div class="spec-item"><span class="spec-icon">04</span><div><strong>Firebase 雲端資料</strong><span>Firestore</span></div></div>
       </div>
     </div>
 
@@ -287,7 +289,7 @@
       <div class="container">
         <div class="section-head">
           <div><div class="eyebrow">02 / COMMAND DECK</div><h2>管理控制台 <span style="color:var(--red)">/ ADMIN</span></h2></div>
-          <p>管理員限定。建立、編輯、上架或下架商品，並查看訂單。商品圖片上傳至 Firebase Storage。</p>
+          <p>管理員限定。建立、編輯、上架或下架商品，並查看訂單。商品資料儲存在 Firestore；圖片檔由 GitHub Pages 提供。</p>
         </div>
         <div class="admin-warning">管理員權限由 Firestore 的 users/{UID} 文件 role 欄位控制。新會員預設為 user；請在 Firebase 後台將指定會員的 role 改為 admin。</div>
         <div class="admin-grid">
@@ -301,8 +303,7 @@
                 <div class="form-row"><label for="productCategory">商品分類 *</label><input class="field" id="productCategory" maxlength="40" required="" placeholder="模型／工具／收藏"></div>
                 <div class="form-row"><label for="productPrice">售價（NT$）*</label><input class="field" id="productPrice" type="number" min="0" step="1" required="" placeholder="1280"></div>
                 <div class="form-row"><label for="productStock">庫存數量 *</label><input class="field" id="productStock" type="number" min="0" step="1" required="" value="1"></div>
-                <div class="form-row"><label for="productMainImage">商品主圖 *</label><input class="field" id="productMainImage" type="file" accept="image/*"></div>
-                <div class="form-row full"><label for="productGallery">商品多張細節圖（可複選）</label><input class="field" id="productGallery" type="file" accept="image/*" multiple=""><div class="image-preview" id="imagePreview"></div><div class="form-note">每張圖片上限 8 MB。建立新商品時必須上傳主圖；編輯既有商品時可留空以保留原圖。</div></div>
+                <div class="form-row full"><label for="productImageUrl">商品圖片檔名（選填）</label><input class="field" id="productImageUrl" type="text" maxlength="200" autocomplete="off" placeholder="例如：rx-78.jpg"><div class="form-note">請先將圖片放入 index_files/product_image，再填寫檔名（含副檔名）。留空時會顯示「Comming Soon...」。Firestore 欄位名稱為 image_url。</div></div>
                 <div class="form-row full"><label for="productDescription">商品描述與規格 *</label><textarea class="field" id="productDescription" required="" maxlength="5000" placeholder="材質、尺寸、內容物、注意事項等"></textarea></div>
                 <div class="form-row full"><label class="check-line"><input id="productPublished" type="checkbox" checked="">立即上架（未勾選則僅管理員看得到）</label></div>
               </div>
@@ -399,7 +400,6 @@
       getFirestore, collection, doc, getDoc, getDocs, query, where,
       addDoc, setDoc, updateDoc, deleteDoc, serverTimestamp, runTransaction
     } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js';
-    import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-storage.js';
 
     // Firebase Web config. Firebase API keys identify the project; authorize access with Security Rules.
     const firebaseConfig = {
@@ -414,7 +414,6 @@
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
-    const storage = getStorage(app);
 
     let currentUser = null;
     let currentProfile = {};
@@ -453,8 +452,6 @@
         'auth/too-many-requests': '嘗試次數過多，請稍後再試。',
         'member/name-taken': '此會員名稱已有人使用，請換一個名稱。',
         'permission-denied': '資料庫拒絕此操作，請確認 Firebase Rules 與管理員 UID 設定。',
-        'storage/unauthorized': '圖片上傳遭拒，請確認 Storage Rules 與管理員 UID 設定。',
-        'storage/canceled': '圖片上傳已取消。'
       };
       return messages[error?.code] || error?.message || '操作失敗，請稍後再試。';
     }
@@ -477,6 +474,22 @@
     }
     function updateCartCount() { $('#cartCount').textContent = cart.reduce((sum, item) => sum + item.qty, 0); }
     function getProduct(productId) { return products.find(product => product.id === productId); }
+    function productImageUrl(product) {
+      const storedValue = product && Object.prototype.hasOwnProperty.call(product, 'image_url')
+        ? product.image_url
+        : product?.mainImage;
+      const value = String(storedValue ?? '').trim();
+      if (!value) return '';
+      if (/^https?:\/\//i.test(value) || value.startsWith('data:image/')) return value;
+      const fileName = value.split(/[\\/]/).pop();
+      return fileName ? `./index_files/product_image/${encodeURIComponent(fileName)}` : '';
+    }
+    function productImageMarkup(product, className = '') {
+      const src = productImageUrl(product);
+      return src
+        ? `<img${className ? ` class="${className}"` : ''} src="${escapeHTML(src)}" alt="${escapeHTML(product?.title || '商品圖片')}" loading="lazy" onerror="this.onerror=null;this.replaceWith(Object.assign(document.createElement('div'),{className:'product-placeholder',textContent:'Comming Soon...'}));" />`
+        : `<div class="product-placeholder${className.includes('detail') ? ' detail-placeholder' : ''}">Comming Soon...</div>`;
+    }
 
     async function loadProducts() {
       $('#productGrid').innerHTML = '<div class="empty-state"><span class="eyebrow">DATABASE SYNC</span><strong>同步商品資料中…</strong></div>';
@@ -519,7 +532,7 @@
       grid.innerHTML = filtered.map(p => `
         <article class="product-card">
           <div class="product-image" data-view-product="${escapeHTML(p.id)}" tabindex="0" role="button" aria-label="查看 ${escapeHTML(p.title)} 詳情">
-            <img src="${escapeHTML(p.mainImage || placeholderImage(p.title))}" alt="${escapeHTML(p.title)}" loading="lazy" onerror="this.onerror=null;this.src='${placeholderImage('UNIT IMAGE ERROR')}';" />
+            ${productImageMarkup(p)}
             <span class="product-tag">${escapeHTML(p.sku || 'FIELD GEAR')}</span>
             <span class="stock-tag">${Number(p.stock || 0) > 0 ? `庫存 ${Number(p.stock)}` : '暫無庫存'}</span>
           </div>
@@ -536,7 +549,7 @@
       const list = $('#adminProductList');
       if (!products.length) { list.innerHTML = '<div class="muted small">尚無商品，請使用左側表單建立商品。</div>'; return; }
       list.innerHTML = products.map(p => `
-        <div class="admin-row"><img src="${escapeHTML(p.mainImage || placeholderImage(p.title))}" alt="" onerror="this.onerror=null;this.src='${placeholderImage('UNIT')}';" />
+        <div class="admin-row">${productImageMarkup(p)}
           <div class="admin-row-main"><strong>${escapeHTML(p.title || '未命名商品')}</strong><span>${money(p.price)} ・ 庫存 ${Number(p.stock || 0)} ・ ${p.isPublished ? '已上架' : '未上架'}</span></div>
           <div class="admin-row-actions"><button class="btn" data-edit-product="${escapeHTML(p.id)}">編輯</button><button class="btn btn-danger" data-delete-product="${escapeHTML(p.id)}">刪除</button></div>
         </div>`).join('');
@@ -546,10 +559,11 @@
       const p = getProduct(productId);
       if (!p) return notify('商品資料已更新，請重新整理目錄。', 'error');
       activeDetailProduct = p;
-      activeDetailImages = [p.mainImage || placeholderImage(p.title), ...(Array.isArray(p.gallery) ? p.gallery : [])].filter(Boolean);
+      const detailImage = productImageUrl(p);
+      activeDetailImages = detailImage ? [detailImage] : [];
       $('#productDetailContent').innerHTML = `
         <div class="product-detail">
-          <div><div class="detail-main-image"><img id="detailMainImage" src="${escapeHTML(activeDetailImages[0])}" alt="${escapeHTML(p.title)}" /></div><div class="thumbs" id="detailThumbs">${activeDetailImages.map((image, index) => `<button class="thumb ${index === 0 ? 'active' : ''}" data-detail-image="${index}" aria-label="查看第 ${index + 1} 張圖片"><img src="${escapeHTML(image)}" alt="商品細節圖 ${index + 1}" /></button>`).join('')}</div></div>
+          <div><div class="detail-main-image">${detailImage ? `<img id="detailMainImage" src="${escapeHTML(detailImage)}" alt="${escapeHTML(p.title)}" onerror="this.onerror=null;this.replaceWith(Object.assign(document.createElement('div'),{className:'product-placeholder detail-placeholder',textContent:'Comming Soon...'}));" />` : '<div class="product-placeholder detail-placeholder">Comming Soon...</div>'}</div><div class="thumbs" id="detailThumbs"></div></div>
           <div class="detail-info"><div class="eyebrow">${escapeHTML(p.sku || 'ARMATURE UNIT')}</div><div class="product-category" style="margin-top:10px">${escapeHTML(p.category || 'FIELD GEAR')}</div><h3>${escapeHTML(p.title || '未命名商品')}</h3><div class="detail-price">${money(p.price)} <span style="font:500 .75rem 'Noto Sans TC';color:var(--muted)">TWD</span></div><div class="detail-meta"><span>庫存狀態</span><strong style="color:${Number(p.stock || 0) > 0 ? 'var(--green)' : 'var(--red)'}">${Number(p.stock || 0) > 0 ? `可供應（${Number(p.stock)}）` : '暫無庫存'}</strong></div><div class="detail-description">${escapeHTML(p.description || '尚未提供商品描述。')}</div><div class="form-actions"><button class="btn btn-primary" data-detail-add-cart="${escapeHTML(p.id)}" ${Number(p.stock || 0) <= 0 ? 'disabled' : ''}>＋ 加入購物車</button>${isAdmin ? `<button class="btn" data-detail-edit="${escapeHTML(p.id)}">編輯商品</button>` : ''}</div></div>
         </div>`;
       openDialog('productDialog');
@@ -585,7 +599,7 @@
       }
       $('#placeOrderButton').disabled = false;
       $('#cartItems').innerHTML = rows.map(({ item, product }) => `
-        <div class="cart-row"><img src="${escapeHTML(product.mainImage || placeholderImage(product.title))}" alt="${escapeHTML(product.title)}" onerror="this.onerror=null;this.src='${placeholderImage('UNIT')}';"/><div><strong>${escapeHTML(product.title)}</strong><span>${money(product.price)} / 件</span><div class="qty-control"><button type="button" data-cart-decrease="${escapeHTML(product.id)}" aria-label="減少數量">−</button><span>${item.qty}</span><button type="button" data-cart-increase="${escapeHTML(product.id)}" aria-label="增加數量" ${item.qty >= Number(product.stock || 0) ? 'disabled' : ''}>＋</button><button type="button" data-cart-remove="${escapeHTML(product.id)}" style="width:auto;padding:0 7px;color:#ff9aa3">移除</button></div></div><strong class="cart-price">${money(Number(product.price || 0) * item.qty)}</strong></div>`).join('');
+        <div class="cart-row">${productImageMarkup(product)}<div><strong>${escapeHTML(product.title)}</strong><span>${money(product.price)} / 件</span><div class="qty-control"><button type="button" data-cart-decrease="${escapeHTML(product.id)}" aria-label="減少數量">−</button><span>${item.qty}</span><button type="button" data-cart-increase="${escapeHTML(product.id)}" aria-label="增加數量" ${item.qty >= Number(product.stock || 0) ? 'disabled' : ''}>＋</button><button type="button" data-cart-remove="${escapeHTML(product.id)}" style="width:auto;padding:0 7px;color:#ff9aa3">移除</button></div></div><strong class="cart-price">${money(Number(product.price || 0) * item.qty)}</strong></div>`).join('');
       const subtotal = rows.reduce((sum, { item, product }) => sum + Number(product.price || 0) * item.qty, 0);
       const shipping = subtotal === 0 || subtotal >= 1500 ? 0 : 80;
       $('#cartSubtotal').textContent = money(subtotal); $('#cartShipping').textContent = money(shipping); $('#cartTotal').textContent = money(subtotal + shipping);
@@ -633,7 +647,7 @@
         };
         const items = freshRows.map(({ item, product }) => ({
           productId: product.id, title: product.title || '商品', price: Number(product.price || 0), quantity: item.qty,
-          image: product.mainImage || ''
+          image: productImageUrl(product) || null
         }));
         await addDoc(collection(db, 'orders'), {
           userId: currentUser.uid, orderNo, customer, items,
@@ -806,8 +820,7 @@
       $('#productFormTitle').textContent = '＋ 建立新商品 / NEW UNIT';
       $('#saveProductButton').textContent = '儲存商品資料';
       $('#cancelEditButton').classList.add('hidden');
-      $('#productMainImage').required = true;
-      $('#imagePreview').innerHTML = '';
+      $('#productImageUrl').value = '';
     }
     function beginEditProduct(productId) {
       const p = getProduct(productId);
@@ -821,46 +834,31 @@
       $('#productStock').value = Number(p.stock || 0);
       $('#productDescription').value = p.description || '';
       $('#productPublished').checked = p.isPublished === true;
-      $('#productMainImage').value = '';
-      $('#productGallery').value = '';
-      $('#productMainImage').required = false;
-      $('#imagePreview').innerHTML = [p.mainImage, ...(Array.isArray(p.gallery) ? p.gallery : [])].filter(Boolean).slice(0, 8).map(url => `<img src="${escapeHTML(url)}" alt="既有商品圖片" />`).join('');
+      $('#productImageUrl').value = p.image_url || '';
       $('#productFormTitle').textContent = `✎ 編輯商品 / ${p.sku || p.title}`;
       $('#saveProductButton').textContent = '更新商品資料';
       $('#cancelEditButton').classList.remove('hidden');
       $('#adminPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
-    async function uploadProductImage(file) {
-      if (!file || !file.type.startsWith('image/')) throw new Error('請只選擇圖片檔案。');
-      if (file.size >= 8 * 1024 * 1024) throw new Error(`圖片「${file.name}」超過 8 MB。`);
-      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-90);
-      const path = `products/${currentUser.uid}/${Date.now()}-${crypto.randomUUID()}-${safeName}`;
-      const fileRef = storageRef(storage, path);
-      await uploadBytes(fileRef, file, { contentType: file.type });
-      return getDownloadURL(fileRef);
-    }
-
     async function saveProduct(event) {
       event.preventDefault();
       if (!isAdmin || !currentUser) return notify('此功能僅限管理員使用。', 'error');
       if (!$('#productForm').reportValidity()) return;
-      const mainFile = $('#productMainImage').files[0];
-      const galleryFiles = [...$('#productGallery').files];
-      if (!editingProduct && !mainFile) return notify('建立新商品時請上傳商品主圖。', 'error');
       const button = $('#saveProductButton');
-      button.disabled = true; button.textContent = '圖片上傳／儲存中…';
+      button.disabled = true; button.textContent = '儲存中…';
       try {
-        let mainImage = editingProduct?.mainImage || '';
-        if (mainFile) mainImage = await uploadProductImage(mainFile);
-        const gallery = galleryFiles.length ? await Promise.all(galleryFiles.map(uploadProductImage)) : (editingProduct?.gallery || []);
+        const imageFileName = $('#productImageUrl').value.trim();
+        if (imageFileName && (/[\\/]/.test(imageFileName) || imageFileName === '.' || imageFileName === '..')) {
+          throw new Error('圖片欄位請只填檔名，不要包含資料夾路徑。');
+        }
         const payload = {
           title: $('#productName').value.trim(), sku: $('#productSku').value.trim(),
           category: $('#productCategory').value.trim(), price: Number($('#productPrice').value),
           stock: Number($('#productStock').value), description: $('#productDescription').value.trim(),
-          mainImage, gallery, isPublished: $('#productPublished').checked, updatedAt: serverTimestamp()
+          image_url: imageFileName || null, isPublished: $('#productPublished').checked, updatedAt: serverTimestamp()
         };
-        if (!payload.title || !payload.category || !payload.description || !mainImage) throw new Error('請完整填寫商品資料並設定主圖。');
+        if (!payload.title || !payload.category || !payload.description) throw new Error('請完整填寫商品名稱、分類與描述。');
         if (editingProduct) {
           await updateDoc(doc(db, 'products', editingProduct.id), payload);
           notify('商品資料已更新。');
@@ -876,7 +874,7 @@
     async function removeProduct(productId) {
       const p = getProduct(productId);
       if (!p || !isAdmin) return;
-      if (!confirm(`確定刪除商品「${p.title}」？此動作無法復原。已上傳至 Storage 的圖片檔案不會自動刪除。`)) return;
+      if (!confirm(`確定刪除商品「${p.title}」？此動作無法復原。`)) return;
       try {
         await deleteDoc(doc(db, 'products', productId));
         cart = cart.filter(item => item.productId !== productId); saveCart();
@@ -948,16 +946,6 @@
     });
     $('#cancelEditButton').addEventListener('click', resetProductForm);
     $('#resetProductButton').addEventListener('click', () => setTimeout(resetProductForm, 0));
-    $('#productMainImage').addEventListener('change', previewSelectedImages);
-    $('#productGallery').addEventListener('change', previewSelectedImages);
-    function previewSelectedImages() {
-      const previews = [];
-      const main = $('#productMainImage').files[0];
-      const gallery = [...$('#productGallery').files].slice(0, 8);
-      for (const file of [main, ...gallery].filter(Boolean)) previews.push(URL.createObjectURL(file));
-      $('#imagePreview').innerHTML = previews.map(url => `<img src="${url}" alt="待上傳圖片預覽" />`).join('');
-    }
-
     $('#yearNow').textContent = new Date().getFullYear();
     updateCartCount();
     setAuthMode('login');
