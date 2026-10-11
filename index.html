@@ -289,7 +289,7 @@
           <div><div class="eyebrow">02 / COMMAND DECK</div><h2>管理控制台 <span style="color:var(--red)">/ ADMIN</span></h2></div>
           <p>管理員限定。建立、編輯、上架或下架商品，並查看訂單。商品圖片上傳至 Firebase Storage。</p>
         </div>
-        <div class="admin-warning">權限設定提醒：需先將你的 Firebase Authentication UID 同步填入 HTML、Firestore Rules、Storage Rules 的管理員清單。不要使用可由一般會員自行修改的 users.role 欄位當作管理員依據。</div>
+        <div class="admin-warning">管理員權限由 Firestore 的 users/{UID} 文件 role 欄位控制。新會員預設為 user；請在 Firebase 後台將指定會員的 role 改為 admin。</div>
         <div class="admin-grid">
           <div class="panel">
             <h3 id="productFormTitle">＋ 建立新商品 / NEW UNIT</h3>
@@ -410,10 +410,6 @@
       messagingSenderId: "878427955561",
       appId: "1:878427955561:web:4680ce2acdbb0119d89df8"
     };
-
-    // IMPORTANT: Replace this entry with your own Firebase Authentication UID.
-    // The exact same UID must be added to firestore.rules and storage.rules.
-    const ADMIN_UIDS = ['PASTE_ADMIN_UID_HERE'];
 
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
@@ -677,7 +673,7 @@
           const credential = await createUserWithEmailAndPassword(auth, email, password);
           if (displayName) await updateProfile(credential.user, { displayName });
           await setDoc(doc(db, 'users', credential.user.uid), {
-            displayName, email, phone: '', address: '', createdAt: serverTimestamp(), updatedAt: serverTimestamp()
+            displayName, email, phone: '', address: '', role: 'user', createdAt: serverTimestamp(), updatedAt: serverTimestamp()
           });
           notify('會員帳號建立成功。');
         } else {
@@ -705,9 +701,10 @@
       const snap = await getDoc(userRef);
       if (snap.exists()) currentProfile = snap.data();
       else {
-        currentProfile = { displayName: currentUser.displayName || '', email: currentUser.email || '', phone: '', address: '' };
+        currentProfile = { displayName: currentUser.displayName || '', email: currentUser.email || '', phone: '', address: '', role: 'user' };
         await setDoc(userRef, { ...currentProfile, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
       }
+      if (!currentProfile.role) currentProfile.role = 'user';
       fillProfileForm();
     }
     function fillProfileForm() {
@@ -920,10 +917,17 @@
     onAuthStateChanged(auth, async user => {
       currentUser = user;
       currentProfile = {};
-      isAdmin = !!user && ADMIN_UIDS.includes(user.uid);
+      isAdmin = false;
       renderAccountButton();
-      try { if (user) await loadProfile(); }
-      catch (error) { console.error(error); notify(`會員資料讀取失敗：${explainError(error)}`, 'error'); }
+      try {
+        if (user) {
+          await loadProfile();
+          isAdmin = currentProfile.role === 'admin';
+        }
+      } catch (error) {
+        console.error(error); notify(`會員資料讀取失敗：${explainError(error)}`, 'error');
+      }
+      renderAccountButton();
       await loadProducts();
       if (isAdmin) await loadAdminOrders();
       renderCart();
