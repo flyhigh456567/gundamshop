@@ -1,0 +1,92 @@
+Firebase Firestore Rules
+========================
+
+將下方第一段貼到 Firebase Console > Firestore Database > Rules，然後發布。
+部署前請將 PASTE_ADMIN_UID_HERE 換成你的管理員 Firebase Authentication UID。
+同一個 UID 也要填入 index.html 的 ADMIN_UIDS。
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return signedIn() && request.auth.uid == 'PASTE_ADMIN_UID_HERE';
+    }
+
+    match /users/{userId} {
+      allow create: if signedIn()
+        && request.auth.uid == userId
+        && request.resource.data.keys().hasOnly([
+          'displayName', 'email', 'phone', 'address', 'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.email == request.auth.token.email;
+
+      allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
+
+      allow update: if signedIn()
+        && request.auth.uid == userId
+        && request.resource.data.keys().hasOnly([
+          'displayName', 'email', 'phone', 'address', 'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.email == resource.data.email
+        && request.resource.data.createdAt == resource.data.createdAt;
+
+      allow delete: if isAdmin();
+    }
+
+    match /products/{productId} {
+      allow read: if isAdmin() || resource.data.isPublished == true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /orders/{orderId} {
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.keys().hasOnly([
+          'userId', 'orderNo', 'customer', 'items', 'subtotal', 'shipping',
+          'total', 'paymentMethod', 'status', 'createdAt'
+        ])
+        && request.resource.data.status == 'pending_payment'
+        && request.resource.data.paymentMethod == 'unintegrated_test';
+
+      allow read: if signedIn()
+        && (resource.data.userId == request.auth.uid || isAdmin());
+      allow update, delete: if isAdmin();
+    }
+  }
+}
+
+Firebase Storage Rules (商品圖片上傳功能需要)
+============================================
+
+此段請另外貼到 Firebase Console > Storage > Rules，並使用同一個管理員 UID。
+
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.uid == 'PASTE_ADMIN_UID_HERE';
+    }
+
+    match /products/{userId}/{fileName} {
+      allow read: if true;
+      allow write: if isAdmin()
+        && request.auth.uid == userId
+        && request.resource.size < 8 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+  }
+}
+
+注意事項
+========
+
+- Firebase Web API key 會出現在瀏覽器程式中，這是正常的；資料安全由 Rules 控制。
+- 請先在 Firebase Authentication 啟用「電子郵件/密碼」登入。
+- 建立你的管理員會員後，從 Authentication 使用者清單複製 UID，替換上述及 index.html 內的佔位文字。
+- 首次註冊會建立 Authentication 帳號，並將會員基本資料寫入 Firestore 的 users/{UID}。
+- 訂單金額目前由前端計算，僅適合測試流程；正式收款前應移至可信任的後端重新計價。
